@@ -1,0 +1,2 @@
+pywinpty>=2.0.13; platform_system == "Windows"
+ptyprocess>=0.7.0; platform_system != "Windows"

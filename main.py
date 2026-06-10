@@ -1,0 +1,90 @@
+from pathlib import Path
+from typing import Any
+
+from astrbot.api import logger
+from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.star import Context, Star, register
+
+from .terminal.manager import TerminalManager
+from .terminal.policy import TerminalPolicyConfig
+
+
+@register(
+    "astrbot_plugin_terminal_for_koko",
+    "coco",
+    "Koko 交互终端",
+    "0.1.0",
+    "https://github.com/coco292931/astrbot_plugin_terminal_for_koko",
+)
+class TerminalForKokoPlugin(Star):
+    def __init__(self, context: Context, config: dict | None = None):
+        super().__init__(context)
+        self.config = config if isinstance(config, dict) else {}
+        policy = TerminalPolicyConfig.from_config(self.config)
+        audit_path = Path(__file__).with_name("data") / "audit.jsonl"
+        self.terminal_manager = TerminalManager(policy=policy, audit_path=audit_path)
+        logger.info(
+            "[terminal_for_koko] loaded: "
+            f"enabled={policy.enabled}, admin_only={policy.admin_only}, "
+            f"allow_group={policy.allow_group}, max_sessions={policy.max_sessions}"
+        )
+
+    @filter.llm_tool(name="terminal")
+    async def terminal(
+        self,
+        event: AstrMessageEvent,
+        action: str,
+        session_id: str = "",
+        text: str = "",
+        key: str = "",
+        command: str = "",
+        cwd: str = "",
+        rows: int = 24,
+        cols: int = 100,
+        wait: bool = True,
+    ) -> dict[str, Any]:
+        """交互式终端统一入口。
+
+        这是一个持久终端会话工具，内部通过 action 分发动作。默认配置下该工具关闭，
+        启用后也建议只允许管理员私聊使用。普通命令执行请优先使用更窄权限的工具。
+
+        Args:
+            action(string): 动作，支持 start/read/send/key/resize/stop/list
+            session_id(string): 会话 ID，start 之外的动作通常必填
+            text(string): send 动作用的输入文本，可包含换行
+            key(string): key 动作用的特殊按键，如 enter/tab/ctrl_c/up/down
+            command(string): start 动作用的终端命令，留空使用配置默认值
+            cwd(string): start 动作用的工作目录；若配置了 cwd_allowlist，则必须位于其中
+            rows(int): start/resize 动作用的终端行数
+            cols(int): start/resize 动作用的终端列数
+            wait(bool): start/send/key 后是否按插件配置等待一小段时间再读屏
+        """
+        try:
+            return await self.terminal_manager.handle(
+                event=event,
+                action=action,
+                session_id=session_id,
+                text=text,
+                key=key,
+                command=command,
+                cwd=cwd,
+                rows=rows,
+                cols=cols,
+                wait=wait,
+            )
+        except Exception as exc:
+            logger.warning(f"[terminal_for_koko] terminal tool failed: {exc}")
+            return {
+                "ok": False,
+                "action": action,
+                "session_id": session_id,
+                "alive": False,
+                "seq": 0,
+                "screen": "",
+                "recent_output": "",
+                "truncated": False,
+                "message": f"terminal tool failed: {exc}",
+            }
+
+    async def terminate(self):
+        await self.terminal_manager.stop_all()

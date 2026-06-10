@@ -1,0 +1,108 @@
+{
+    "terminal": {
+        "description": "交互式终端",
+        "type": "object",
+        "hint": "给 LLM 使用的持久终端会话能力。默认关闭，启用前请确认安全边界。",
+        "items": {
+            "enabled": {
+                "description": "启用终端工具",
+                "hint": "默认关闭。开启后 LLM 才能调用 terminal 工具。",
+                "type": "bool",
+                "default": false
+            },
+            "admin_only": {
+                "description": "仅管理员可用",
+                "hint": "建议保持开启。若无法从事件确认管理员身份，请填写 admin_user_ids。",
+                "type": "bool",
+                "default": true
+            },
+            "admin_user_ids": {
+                "description": "允许使用的用户 ID",
+                "hint": "当 AstrBot 事件无法确认管理员身份时，用这里的用户 ID 作为安全白名单。",
+                "type": "list",
+                "items": {
+                    "type": "string"
+                },
+                "default": []
+            },
+            "allow_group": {
+                "description": "允许群聊调用",
+                "hint": "默认禁用。交互终端建议只在私聊中使用。",
+                "type": "bool",
+                "default": false
+            },
+            "max_sessions": {
+                "description": "最大会话数",
+                "hint": "同时存在的终端会话数量上限。",
+                "type": "int",
+                "default": 2
+            },
+            "idle_ttl_seconds": {
+                "description": "空闲回收秒数",
+                "hint": "会话超过该时长无操作后自动关闭。",
+                "type": "int",
+                "default": 600
+            },
+            "max_output_chars": {
+                "description": "屏幕输出字符上限",
+                "hint": "返回给 LLM 的 screen 最大字符数。",
+                "type": "int",
+                "default": 8000
+            },
+            "max_recent_chars": {
+                "description": "增量输出字符上限",
+                "hint": "返回给 LLM 的 recent_output 最大字符数。",
+                "type": "int",
+                "default": 4000
+            },
+            "max_input_chars": {
+                "description": "单次输入字符上限",
+                "hint": "限制 LLM 每次 send 可写入终端的文本长度。",
+                "type": "int",
+                "default": 4000
+            },
+            "default_command": {
+                "description": "默认终端命令",
+                "hint": "start 未指定 command 时使用。留空则按平台自动选择：Linux/macOS 使用 sh，Windows 使用 powershell。",
+                "type": "string",
+                "default": ""
+            },
+            "allowed_commands": {
+                "description": "允许启动的命令",
+                "hint": "只校验 command 的第一个可执行文件名。留空不建议，会放宽限制。",
+                "type": "list",
+                "items": {
+                    "type": "string"
+                },
+                "default": ["sh", "bash", "zsh", "fish", "pwsh", "powershell", "cmd"]
+            },
+            "default_cwd": {
+                "description": "默认工作目录",
+                "hint": "留空表示不指定默认目录，由 AstrBot 进程/终端后端决定当前目录。",
+                "type": "string",
+                "default": ""
+            },
+            "cwd_allowlist": {
+                "description": "允许的工作目录根",
+                "hint": "非空时，显式传入的 cwd 必须位于这些目录内。留空表示不限制 cwd。",
+                "type": "list",
+                "items": {
+                    "type": "string"
+                },
+                "default": []
+            },
+            "audit_enabled": {
+                "description": "启用审计日志",
+                "hint": "记录 action、会话 ID、输入摘要、输出长度，不完整保存全部输出。",
+                "type": "bool",
+                "default": true
+            },
+            "settle_delay_ms": {
+                "description": "动作后自动等待毫秒数",
+                "hint": "start/send/key 后若 wait=true，插件等待这段时间后自动返回屏幕；LLM 只决定是否等待，不决定等待多久。",
+                "type": "int",
+                "default": 200
+            }
+        }
+    }
+}
