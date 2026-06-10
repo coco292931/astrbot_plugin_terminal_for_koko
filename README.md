@@ -1,0 +1,2 @@
+# astrbot_plugin_terminal_for_koko
+astrbot_plugin_terminal_for_koko
