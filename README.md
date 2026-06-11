@@ -208,7 +208,7 @@ pipe  普通管道执行命令，不分配 PTY
 
 如果主要使用 `ssh`、`sudo` 或其它依赖真实 TTY 的交互式程序，建议安装 `tmux` 并使用 `backend_mode=tmux` 或 `backend=tmux`。tmux 后端会创建一个真实的 detached tmux session，通过 `send-keys` / `paste-buffer` 写入输入，通过 `capture-pane` 读取屏幕，比自建 PTY 更接近手动打开终端的行为。
 
-`sshpass` 是一个例外：它自己会处理密码提示，并可能创建/依赖自己的 PTY。为了避免 tmux/PTY 再套一层导致登录被拦截，默认开启 `sshpass_pipe_fallback`。当 `start.command` 包含 `sshpass` 时，插件会自动改用 `pipe` 后端；如果在已有 tmux/pty 会话里 `send` 了 `sshpass ...`，插件也会改为新建一个 `pipe` 会话执行这条命令。若你确认某个环境里必须强制 tmux/pty，可以关闭这个开关后再显式传 `backend`。
+`sshpass` 是一个例外：它自己会处理密码提示，并可能创建/依赖自己的 PTY。为了避免 tmux/PTY 再套一层导致登录被拦截，默认开启 `sshpass_pipe_fallback`。当 `start.command` 包含 `sshpass` 时，插件会自动改用 `pipe` 后端；如果在已有 tmux/pty 会话里 `send` 了 `sshpass ...`，插件也会改为新建一个 `pipe` 会话执行这条命令。对于可解析的 `sshpass -p/-f/-e ... ssh ...` 写法，插件会移除 `sshpass` 包裹，直接启动内层 SSH 命令，并在单层 PTY 中自动回答密码提示。若你确认某个环境里必须强制 tmux/pty，可以关闭这个开关后再显式传 `backend`。
 
 命令权限模式：
 
@@ -241,8 +241,8 @@ clear_line             单次 send 前先发 Ctrl-U 清空当前行
 
 - Linux/macOS 默认优先使用 `tmux`，缺失时回退到 `ptyprocess`。
 - Windows 后端使用 `pywinpty` / ConPTY。
-- `pipe` 后端使用普通 stdin/stdout 管道，不额外分配 PTY。
+- `pipe` 后端默认使用普通 stdin/stdout 管道，不额外分配 PTY；可解析的 `sshpass` 命令会改用单层 PTY prompt 后端自动输入密码。
 - Linux 后端会尽量设置 `LANG/LC_ALL=C.UTF-8`。
 - Windows 后端会尽量设置 Python UTF-8 环境变量。
 
-tmux 后端可以改善 `ssh`、`sudo` 密码输入、全屏 TUI 等复杂交互。`sshpass` 默认改走 `pipe` 后端以规避双重 PTY。tmux 仍然依赖宿主机安装 `tmux`，并且当前实现是创建插件托管的 tmux session；后续还可以继续扩展为接管已有 tmux socket/session。
+tmux 后端可以改善 `ssh`、`sudo` 密码输入、全屏 TUI 等复杂交互。`sshpass` 默认改走 `pipe` fallback；可解析的 `sshpass` 命令会被转换为内层 SSH 命令并由插件回答密码提示，以规避双重 PTY。tmux 仍然依赖宿主机安装 `tmux`，并且当前实现是创建插件托管的 tmux session；后续还可以继续扩展为接管已有 tmux socket/session。

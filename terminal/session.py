@@ -4,7 +4,14 @@ import sys
 import time
 from dataclasses import dataclass
 
-from .backends import PipeProcessSession, PtyProcessSession, TmuxSession, WinPtySession
+from .backends import (
+    PipeProcessSession,
+    PtyProcessSession,
+    SshpassPromptSession,
+    TmuxSession,
+    WinPtySession,
+    can_handle_sshpass,
+)
 from .keys import key_to_ansi
 from .screen_buffer import ScreenSnapshot, TextRingBuffer
 
@@ -75,6 +82,27 @@ class TerminalSession:
 
     def _create_backend(self):
         backend_mode = (self.backend_mode or "auto").strip().lower()
+
+        # sshpass uses ptrace or internal PTY to intercept its child's TTY reads.
+        # Both mechanisms fail inside containers (ptrace restricted by seccomp) and
+        # in pipe backends (no TTY at all). The universal fix is to strip the sshpass
+        # wrapper and drive the inner command directly through our own PTY, injecting
+        # the password when we see the prompt. This applies regardless of the chosen
+        # backend mode, so we check it first on any non-Windows platform.
+        if not sys.platform.startswith("win") and can_handle_sshpass(self.command, self.cwd):
+            try:
+                return SshpassPromptSession(
+                    command=self.command,
+                    cwd=self.cwd,
+                    rows=self.rows,
+                    cols=self.cols,
+                    buffer=self.buffer,
+                )
+            except Exception:
+                # ptyprocess not installed or parse failed — fall through to the
+                # normal backend so the user gets an error message rather than silence.
+                pass
+
         if backend_mode == "pipe":
             return PipeProcessSession(
                 command=self.command,

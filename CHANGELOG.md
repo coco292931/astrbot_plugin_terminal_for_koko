@@ -2,6 +2,18 @@
 
 所有重要变更都会记录在这里。
 
+## [0.3.3] - 2026-06-11
+
+### Added
+
+- 新增 `sshpass` prompt 后端：检测到可解析的 `sshpass -p/-f/-e ... ssh ...` 命令时，不再执行 `sshpass` 本体，而是启动内层 SSH 命令并在单层 PTY 中自动回答密码提示。
+- 新增 `sshpass` 命令解析回归测试，覆盖 `-p`、`-ppass`、`-f`、`-eVAR`、`-P` 等常见写法。
+
+### Changed
+
+- 插件注册版本同步更新为 `0.3.3`。
+- `pipe` fallback 对可解析的 `sshpass` 命令优先使用 prompt 后端，未支持的 `sshpass` 写法仍回退到原始 pipe 执行。
+
 ## [0.3.2] - 2026-06-11
 
 ### Changed
