@@ -53,6 +53,8 @@ class TerminalPolicyConfig:
     default_command: str = ""
     allowed_commands: list[str] = field(default_factory=list)
     backend_mode: str = "auto"
+    auto_start_tmux: bool = True
+    sshpass_pipe_fallback: bool = True
     default_cwd: str = ""
     cwd_allowlist: list[str] = field(default_factory=list)
     command_permission_mode: str = "blacklist"
@@ -81,6 +83,8 @@ class TerminalPolicyConfig:
             default_command=str(raw.get("default_command") or "").strip(),
             allowed_commands=_safe_list(raw.get("allowed_commands", _default_allowed_commands())),
             backend_mode=_normalize_backend_mode(raw.get("backend_mode")),
+            auto_start_tmux=_safe_bool(raw.get("auto_start_tmux"), True),
+            sshpass_pipe_fallback=_safe_bool(raw.get("sshpass_pipe_fallback"), True),
             default_cwd=str(raw.get("default_cwd") or "").strip(),
             cwd_allowlist=_safe_list(raw.get("cwd_allowlist", [])),
             command_permission_mode=_normalize_permission_mode(raw.get("command_permission_mode")),
@@ -122,6 +126,15 @@ class TerminalPolicyConfig:
         if allowed and executable not in allowed:
             return False, "", f"命令 {executable!r} 不在 allowed_commands 白名单内"
         return True, command, ""
+
+    def resolve_backend_mode(self, command: str, backend: str = "") -> str:
+        selected = _normalize_backend_mode(backend) if backend else self.backend_mode
+        if selected != "pipe" and self.should_use_pipe_for_sshpass(command):
+            return "pipe"
+        return selected
+
+    def should_use_pipe_for_sshpass(self, text: str) -> bool:
+        return self.sshpass_pipe_fallback and _looks_like_sshpass(text)
 
     def authorize_command_text(self, event: Any, text: str) -> tuple[bool, str]:
         text = (text or "").strip()
@@ -188,7 +201,7 @@ def _normalize_permission_mode(value: Any) -> str:
 
 def _normalize_backend_mode(value: Any) -> str:
     mode = str(value or "auto").strip().lower()
-    if mode in {"auto", "pty", "tmux"}:
+    if mode in {"auto", "pty", "tmux", "pipe"}:
         return mode
     return "auto"
 
@@ -196,6 +209,11 @@ def _normalize_backend_mode(value: Any) -> str:
 def _contains_blacklisted_command(text: str, blacklist: list[str]) -> bool:
     lowered = text.lower()
     return any(item.lower() in lowered for item in blacklist if item)
+
+
+def _looks_like_sshpass(command: str) -> bool:
+    lowered = (command or "").lower()
+    return "sshpass" in lowered
 
 
 def _first_executable_name(command: str) -> str:

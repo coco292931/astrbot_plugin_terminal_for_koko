@@ -4,25 +4,9 @@ import sys
 import time
 from dataclasses import dataclass
 
-from .backends import PtyProcessSession, TmuxSession, WinPtySession
+from .backends import PipeProcessSession, PtyProcessSession, TmuxSession, WinPtySession
+from .keys import key_to_ansi
 from .screen_buffer import ScreenSnapshot, TextRingBuffer
-
-
-KEY_MAP = {
-    "enter": "\r",
-    "tab": "\t",
-    "escape": "\x1b",
-    "esc": "\x1b",
-    "backspace": "\x7f",
-    "ctrl_c": "\x03",
-    "ctrl_d": "\x04",
-    "ctrl_u": "\x15",
-    "ctrl_l": "\x0c",
-    "up": "\x1b[A",
-    "down": "\x1b[B",
-    "right": "\x1b[C",
-    "left": "\x1b[D",
-}
 
 
 @dataclass
@@ -67,14 +51,11 @@ class TerminalSession:
         self.backend.write(text)
 
     def send_key(self, key: str) -> None:
-        normalized = (key or "").strip().lower().replace("-", "_")
         if hasattr(self.backend, "send_key"):
             self.touch()
-            self.backend.send_key(normalized)
+            self.backend.send_key(key)
             return
-        if normalized not in KEY_MAP:
-            raise ValueError(f"不支持的 key: {key}")
-        self.write(KEY_MAP[normalized])
+        self.write(key_to_ansi(key))
 
     def resize(self, rows: int, cols: int) -> None:
         self.rows = max(1, rows)
@@ -94,6 +75,14 @@ class TerminalSession:
 
     def _create_backend(self):
         backend_mode = (self.backend_mode or "auto").strip().lower()
+        if backend_mode == "pipe":
+            return PipeProcessSession(
+                command=self.command,
+                cwd=self.cwd,
+                rows=self.rows,
+                cols=self.cols,
+                buffer=self.buffer,
+            )
         if backend_mode == "tmux":
             return TmuxSession(
                 session_id=self.session_id,

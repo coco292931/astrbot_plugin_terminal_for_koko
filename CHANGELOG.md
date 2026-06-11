@@ -2,6 +2,23 @@
 
 所有重要变更都会记录在这里。
 
+## [0.3.0] - 2026-06-11
+
+### Added
+
+- `start` 新增 `backend` 参数，可按会话覆盖默认后端，支持 `auto`、`pty`、`tmux`、`pipe`。
+- 新增 `pipe` 后端，通过普通 stdin/stdout 管道执行命令，不额外分配 PTY。
+- 新增 `auto_start_tmux` 配置，插件启用时默认尝试预开一个 tmux 终端会话。
+- 新增 `sshpass_pipe_fallback` 配置，检测到 `sshpass` 启动命令或发送文本时默认自动切换/改道到 `pipe` 后端，规避双重 PTY 导致的登录拦截。
+- `key` 动作新增组合键解析，支持 `ctrl+c`、`ctrl_c`、`shift+tab`、`alt+enter`、`ctrl+shift+left` 等传法。
+- `start` / `read` / `send` 等成功返回中新增 `backend` 与 `backend_mode` 字段，方便确认实际后端。
+
+### Changed
+
+- README 补充 tmux/pipe 后端选择、sshpass 兜底逻辑和组合键传入方式。
+- `_conf_schema.json` 增加 `pipe` 后端选项及 tmux 自动启动、sshpass 降级配置。
+- 插件注册版本同步更新为 `0.3.0`。
+
 ## [0.2.0] - 2026-06-11
 
 ### Added

@@ -28,6 +28,7 @@ class TerminalManager:
         key: str = "",
         command: str = "",
         cwd: str = "",
+        backend: str = "",
         rows: int = 24,
         cols: int = 100,
         wait: bool = True,
@@ -43,7 +44,7 @@ class TerminalManager:
 
         if action == "start":
             result = await self._start(
-                event, command, cwd, rows, cols, text, wait, enter
+                event, command, cwd, backend, rows, cols, text, wait, enter
             )
         elif action == "list":
             result = self._list(action)
@@ -79,11 +80,54 @@ class TerminalManager:
                 pass
         self.sessions.clear()
 
+    def auto_start_tmux(self) -> dict[str, Any] | None:
+        if not self.policy.enabled or not self.policy.auto_start_tmux:
+            return None
+        if any(session.backend_mode == "tmux" and session.alive for session in self.sessions.values()):
+            return None
+        if len(self.sessions) >= self.policy.max_sessions:
+            return self._result(
+                False,
+                "auto_start",
+                "",
+                message=f"已达到最大会话数 {self.policy.max_sessions}",
+            )
+
+        ok, normalized_command, message = self.policy.normalize_command("")
+        if not ok:
+            return self._result(False, "auto_start", "", message=message)
+        ok, normalized_cwd, message = self.policy.normalize_cwd("")
+        if not ok:
+            return self._result(False, "auto_start", "", message=message)
+
+        session_id = self._new_session_id()
+        try:
+            session = TerminalSession(
+                session_id=session_id,
+                command=normalized_command,
+                cwd=normalized_cwd,
+                rows=24,
+                cols=100,
+                max_history_chars=max(self.policy.max_output_chars * 3, 20000),
+                backend_mode="tmux",
+            )
+        except Exception as exc:
+            logger.warning(f"[terminal_for_koko] auto-start tmux failed: {exc}")
+            return self._result(
+                False, "auto_start", "", message=f"自动启动 tmux 终端失败: {exc}"
+            )
+
+        self.sessions[session_id] = session
+        return self._snapshot_result(
+            "auto_start", session_id, session, "tmux terminal auto-started"
+        )
+
     async def _start(
         self,
         event: Any,
         command: str,
         cwd: str,
+        backend: str,
         rows: int,
         cols: int,
         text: str,
@@ -109,6 +153,7 @@ class TerminalManager:
         if not ok:
             return self._result(False, "start", "", message=message)
 
+        backend_mode = self.policy.resolve_backend_mode(normalized_command, backend)
         rows = max(1, min(int(rows or 24), 80))
         cols = max(20, min(int(cols or 100), 240))
         session_id = self._new_session_id()
@@ -120,7 +165,7 @@ class TerminalManager:
                 rows=rows,
                 cols=cols,
                 max_history_chars=max(self.policy.max_output_chars * 3, 20000),
-                backend_mode=self.policy.backend_mode,
+                backend_mode=backend_mode,
             )
         except Exception as exc:
             logger.warning(f"[terminal_for_koko] start failed: {exc}")
@@ -184,6 +229,27 @@ class TerminalManager:
                         session_id,
                         message=f"text 超过 max_input_chars={self.policy.max_input_chars}",
                     )
+                if (
+                    session.backend_mode != "pipe"
+                    and self.policy.should_use_pipe_for_sshpass(prepared_text)
+                ):
+                    result = await self._start(
+                        event,
+                        prepared_text.strip(),
+                        session.cwd,
+                        "pipe",
+                        session.rows,
+                        session.cols,
+                        "",
+                        wait,
+                        False,
+                    )
+                    if result.get("ok"):
+                        result["message"] = (
+                            "检测到 sshpass，已改用 pipe 后端新建会话，避免双重 PTY"
+                        )
+                        result["redirected_from_session_id"] = session_id
+                    return result
                 await self._write_text(session, prepared_text)
                 if wait:
                     await self._wait_after_input(session)
@@ -223,6 +289,7 @@ class TerminalManager:
                     "alive": session.alive,
                     "command": session.command,
                     "backend": session.backend_name,
+                    "backend_mode": session.backend_mode,
                     "cwd": session.cwd,
                     "idle_seconds": int(now - session.updated_at),
                     "rows": session.rows,
@@ -306,6 +373,8 @@ class TerminalManager:
                 snapshot.seq,
                 snapshot.recent_output or snapshot.screen,
             ),
+            "backend": session.backend_name,
+            "backend_mode": session.backend_mode,
             "truncated": snapshot.truncated,
             "message": message,
         }

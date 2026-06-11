@@ -13,7 +13,7 @@ from .terminal.policy import TerminalPolicyConfig
     "astrbot_plugin_terminal_for_koko",
     "coco & gpt",
     "koko 交互终端",
-    "0.2.0",
+    "0.3.0",
     "https://github.com/coco292931/astrbot_plugin_terminal_for_koko",
 )
 class TerminalForKokoPlugin(Star):
@@ -28,8 +28,22 @@ class TerminalForKokoPlugin(Star):
             f"enabled={policy.enabled}, admin_only={policy.admin_only}, "
             f"allow_group={policy.allow_group}, max_sessions={policy.max_sessions}, "
             f"backend_mode={policy.backend_mode}, "
+            f"auto_start_tmux={policy.auto_start_tmux}, "
+            f"sshpass_pipe_fallback={policy.sshpass_pipe_fallback}, "
             f"command_permission_mode={policy.command_permission_mode}"
         )
+        auto_start_result = self.terminal_manager.auto_start_tmux()
+        if auto_start_result:
+            if auto_start_result.get("ok"):
+                logger.info(
+                    "[terminal_for_koko] auto-started tmux session: "
+                    f"{auto_start_result.get('session_id', '')}"
+                )
+            else:
+                logger.warning(
+                    "[terminal_for_koko] tmux auto-start skipped: "
+                    f"{auto_start_result.get('message', '')}"
+                )
 
     @filter.llm_tool(name="terminal")
     async def terminal(
@@ -41,6 +55,7 @@ class TerminalForKokoPlugin(Star):
         key: str = "",
         command: str = "",
         cwd: str = "",
+        backend: str = "",
         rows: int = 24,
         cols: int = 100,
         wait: bool = True,
@@ -56,9 +71,10 @@ class TerminalForKokoPlugin(Star):
             action(string): 动作，支持 start/read/send/key/resize/stop/list
             session_id(string): 会话 ID；只有一个活跃会话时，send/read/key/stop 可省略
             text(string): start/send 动作用的输入文本；enter=true 时会自动补换行执行
-            key(string): key 动作用的特殊按键，如 enter/tab/ctrl_c/ctrl_d/ctrl_u
+            key(string): key 动作用的特殊按键，如 enter、ctrl+c、shift+tab、alt+enter
             command(string): start 动作用的终端命令，留空使用配置默认值
             cwd(string): start 动作用的工作目录；若配置了 cwd_allowlist，则必须位于其中
+            backend(string): start 动作可选后端覆盖，支持 auto/pty/tmux/pipe
             rows(int): start/resize 动作用的终端行数
             cols(int): start/resize 动作用的终端列数
             wait(bool): start/send/key 后是否等待输出安静后再读屏
@@ -74,6 +90,7 @@ class TerminalForKokoPlugin(Star):
                 key=key,
                 command=command,
                 cwd=cwd,
+                backend=backend,
                 rows=rows,
                 cols=cols,
                 wait=wait,

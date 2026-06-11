@@ -74,10 +74,22 @@
             },
             "backend_mode": {
                 "description": "终端后端",
-                "hint": "auto=Linux/macOS 优先 tmux，缺失时回退 pty；pty=自建 PTY；tmux=强制使用 tmux 后端，更适合 ssh/sudo/TUI 交互。",
+                "hint": "默认后端。auto=Linux/macOS 优先 tmux，缺失时回退 pty；pty=自建 PTY；tmux=强制 tmux；pipe=普通管道执行，不分配 PTY。",
                 "type": "string",
                 "default": "auto",
-                "options": ["auto", "pty", "tmux"]
+                "options": ["auto", "pty", "tmux", "pipe"]
+            },
+            "auto_start_tmux": {
+                "description": "启用时自动打开 tmux 终端",
+                "hint": "terminal.enabled=true 且系统安装 tmux 时，插件加载后自动创建一个 tmux 会话，方便 LLM 直接 read/send。",
+                "type": "bool",
+                "default": true
+            },
+            "sshpass_pipe_fallback": {
+                "description": "sshpass 自动使用 pipe 后端",
+                "hint": "默认开启。检测到 start command 包含 sshpass 时，自动避开 tmux/PTY，改用普通管道后端，缓解 sshpass 自己分配 PTY 后再被终端 PTY 包裹的问题。",
+                "type": "bool",
+                "default": true
             },
             "default_cwd": {
                 "description": "默认工作目录",

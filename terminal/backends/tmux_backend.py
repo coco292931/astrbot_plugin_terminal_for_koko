@@ -6,24 +6,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from ..keys import key_to_tmux
 from ..screen_buffer import ScreenSnapshot
-
-
-TMUX_KEY_MAP = {
-    "enter": "Enter",
-    "tab": "Tab",
-    "escape": "Escape",
-    "esc": "Escape",
-    "backspace": "BSpace",
-    "ctrl_c": "C-c",
-    "ctrl_d": "C-d",
-    "ctrl_u": "C-u",
-    "ctrl_l": "C-l",
-    "up": "Up",
-    "down": "Down",
-    "right": "Right",
-    "left": "Left",
-}
 
 
 class TmuxSession:
@@ -102,10 +86,7 @@ class TmuxSession:
         self._refresh_capture()
 
     def send_key(self, key: str) -> None:
-        normalized = (key or "").strip().lower().replace("-", "_")
-        tmux_key = TMUX_KEY_MAP.get(normalized)
-        if not tmux_key:
-            raise ValueError(f"不支持的 key: {key}")
+        tmux_key = key_to_tmux(key)
         self._run(["tmux", "send-keys", "-t", self.target, tmux_key])
         self._refresh_capture()
 
