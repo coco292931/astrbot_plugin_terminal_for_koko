@@ -120,6 +120,7 @@ class TerminalManager:
                 rows=rows,
                 cols=cols,
                 max_history_chars=max(self.policy.max_output_chars * 3, 20000),
+                backend_mode=self.policy.backend_mode,
             )
         except Exception as exc:
             logger.warning(f"[terminal_for_koko] start failed: {exc}")
@@ -221,6 +222,7 @@ class TerminalManager:
                     "session_id": session_id,
                     "alive": session.alive,
                     "command": session.command,
+                    "backend": session.backend_name,
                     "cwd": session.cwd,
                     "idle_seconds": int(now - session.updated_at),
                     "rows": session.rows,

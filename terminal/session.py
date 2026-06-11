@@ -4,7 +4,7 @@ import sys
 import time
 from dataclasses import dataclass
 
-from .backends import PtyProcessSession, WinPtySession
+from .backends import PtyProcessSession, TmuxSession, WinPtySession
 from .screen_buffer import ScreenSnapshot, TextRingBuffer
 
 
@@ -33,6 +33,7 @@ class TerminalSession:
     rows: int
     cols: int
     max_history_chars: int
+    backend_mode: str = "auto"
 
     def __post_init__(self):
         self.created_at = time.time()
@@ -46,7 +47,14 @@ class TerminalSession:
 
     @property
     def output_seq(self) -> int:
+        backend_seq = getattr(self.backend, "output_seq", None)
+        if backend_seq is not None:
+            return int(backend_seq)
         return self.buffer.seq
+
+    @property
+    def backend_name(self) -> str:
+        return type(self.backend).__name__
 
     def touch(self) -> None:
         self.updated_at = time.time()
@@ -60,6 +68,10 @@ class TerminalSession:
 
     def send_key(self, key: str) -> None:
         normalized = (key or "").strip().lower().replace("-", "_")
+        if hasattr(self.backend, "send_key"):
+            self.touch()
+            self.backend.send_key(normalized)
+            return
         if normalized not in KEY_MAP:
             raise ValueError(f"不支持的 key: {key}")
         self.write(KEY_MAP[normalized])
@@ -72,6 +84,8 @@ class TerminalSession:
 
     def snapshot(self, screen_limit: int, recent_limit: int) -> ScreenSnapshot:
         self.touch()
+        if hasattr(self.backend, "snapshot"):
+            return self.backend.snapshot(screen_limit, recent_limit)
         return self.buffer.snapshot(screen_limit, recent_limit)
 
     def close(self) -> None:
@@ -79,6 +93,31 @@ class TerminalSession:
         self.backend.close()
 
     def _create_backend(self):
+        backend_mode = (self.backend_mode or "auto").strip().lower()
+        if backend_mode == "tmux":
+            return TmuxSession(
+                session_id=self.session_id,
+                command=self.command,
+                cwd=self.cwd,
+                rows=self.rows,
+                cols=self.cols,
+            )
+        if backend_mode == "pty":
+            if sys.platform.startswith("win"):
+                return WinPtySession(
+                    command=self.command,
+                    cwd=self.cwd,
+                    rows=self.rows,
+                    cols=self.cols,
+                    buffer=self.buffer,
+                )
+            return PtyProcessSession(
+                command=self.command,
+                cwd=self.cwd,
+                rows=self.rows,
+                cols=self.cols,
+                buffer=self.buffer,
+            )
         if sys.platform.startswith("win"):
             return WinPtySession(
                 command=self.command,
@@ -87,10 +126,21 @@ class TerminalSession:
                 cols=self.cols,
                 buffer=self.buffer,
             )
-        return PtyProcessSession(
-            command=self.command,
-            cwd=self.cwd,
-            rows=self.rows,
-            cols=self.cols,
-            buffer=self.buffer,
-        )
+        try:
+            return TmuxSession(
+                session_id=self.session_id,
+                command=self.command,
+                cwd=self.cwd,
+                rows=self.rows,
+                cols=self.cols,
+            )
+        except Exception:
+            if backend_mode == "auto":
+                return PtyProcessSession(
+                    command=self.command,
+                    cwd=self.cwd,
+                    rows=self.rows,
+                    cols=self.cols,
+                    buffer=self.buffer,
+                )
+            raise

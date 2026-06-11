@@ -66,11 +66,18 @@
                 "default": ""
             },
             "allowed_commands": {
-                "description": "允许启动的终端命令",
-                "hint": "只校验 start command 的第一个可执行文件名。留空会放宽启动命令限制。",
+                "description": "启动命令额外白名单",
+                "hint": "可选。非空时才限制 start command 的第一个可执行文件名；留空表示不额外限制启动命令，由 command_permission_mode 决定是否放行。",
                 "type": "list",
                 "items": {"type": "string"},
-                "default": ["sh", "bash", "zsh", "fish", "pwsh", "powershell", "cmd"]
+                "default": []
+            },
+            "backend_mode": {
+                "description": "终端后端",
+                "hint": "auto=Linux/macOS 优先 tmux，缺失时回退 pty；pty=自建 PTY；tmux=强制使用 tmux 后端，更适合 ssh/sudo/TUI 交互。",
+                "type": "string",
+                "default": "auto",
+                "options": ["auto", "pty", "tmux"]
             },
             "default_cwd": {
                 "description": "默认工作目录",
@@ -87,7 +94,7 @@
             },
             "command_permission_mode": {
                 "description": "命令权限模式",
-                "hint": "allow_all=所有命令不审核；admin_only=仅管理员命令放行；blacklist=仅拦截黑名单命令。",
+                "hint": "allow_all=所有命令放行；admin_only=仅管理员命令放行；blacklist=仅拦截黑名单命令。",
                 "type": "string",
                 "default": "blacklist",
                 "options": ["allow_all", "admin_only", "blacklist"]

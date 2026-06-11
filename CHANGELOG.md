@@ -2,7 +2,7 @@
 
 所有重要变更都会记录在这里。
 
-## [0.1.1] - 2026-06-11
+## [0.2.0] - 2026-06-11
 
 ### Added
 
@@ -15,6 +15,10 @@
 - 新增更多常用按键：`ctrl_u`、`ctrl_l`，保留 `ctrl_c`、`ctrl_d` 等调试常用组合键。
 - 新增命令权限模式配置：`allow_all`、`admin_only`、`blacklist`。
 - 新增 `command_blacklist`，在 `blacklist` 模式下拦截命中的启动命令或输入文本。
+- 新增 `tmux` 后端，通过真实 detached tmux session 承载终端会话。
+- 新增 `backend_mode` 配置：`auto`、`pty`、`tmux`。
+- tmux 后端使用 `load-buffer` / `paste-buffer` 写入长文本，使用 `send-keys` 发送 `ctrl_c`、`ctrl_d` 等真实按键。
+- tmux 后端使用 `capture-pane` 读取屏幕，适配 `ssh`、`sudo`、`sshpass`、TUI 等更依赖真实 TTY 的交互场景。
 
 ### Changed
 
@@ -22,6 +26,8 @@
 - Linux/macOS 后端启动时尽量设置 `LANG` / `LC_ALL` 为 UTF-8。
 - Windows 后端启动时尽量设置 Python UTF-8 相关环境变量，减少中文路径/输出乱码概率。
 - README 更新为更贴近实际使用的示例，补充 `cwd`、自动回车、长命令、后台任务、权限模式说明。
+- Linux/macOS `auto` 后端模式下优先使用 tmux，找不到 tmux 时回退到原 `ptyprocess` 后端。
+- `list` 返回中新增后端类型，方便确认当前会话使用的是 `TmuxSession` 还是 PTY fallback。
 
 ### Fixed
 
@@ -32,7 +38,8 @@
 
 ### Notes
 
-- 对 `sshpass`、`sudo` 密码输入、全屏 TUI 等复杂交互，自造 PTY 仍可能不如真实 `screen` / `tmux` 会话稳定；后续可以考虑增加 screen/tmux socket 后端。
+- 当前 tmux 后端会创建插件托管的 tmux session；后续可继续扩展为接管已有 tmux socket/session。
+- 若 `backend_mode=tmux` 但系统未安装 tmux，启动会话会返回明确错误；若 `backend_mode=auto`，则自动回退到 `ptyprocess`。
 
 ## [0.1.0] - 2026-06-10
 

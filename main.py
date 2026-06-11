@@ -27,6 +27,7 @@ class TerminalForKokoPlugin(Star):
             "[terminal_for_koko] loaded: "
             f"enabled={policy.enabled}, admin_only={policy.admin_only}, "
             f"allow_group={policy.allow_group}, max_sessions={policy.max_sessions}, "
+            f"backend_mode={policy.backend_mode}, "
             f"command_permission_mode={policy.command_permission_mode}"
         )
 

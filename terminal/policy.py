@@ -52,6 +52,7 @@ class TerminalPolicyConfig:
     max_input_chars: int = 4000
     default_command: str = ""
     allowed_commands: list[str] = field(default_factory=list)
+    backend_mode: str = "auto"
     default_cwd: str = ""
     cwd_allowlist: list[str] = field(default_factory=list)
     command_permission_mode: str = "blacklist"
@@ -79,6 +80,7 @@ class TerminalPolicyConfig:
             max_input_chars=_safe_int(raw.get("max_input_chars"), 4000, 100, 20000),
             default_command=str(raw.get("default_command") or "").strip(),
             allowed_commands=_safe_list(raw.get("allowed_commands", _default_allowed_commands())),
+            backend_mode=_normalize_backend_mode(raw.get("backend_mode")),
             default_cwd=str(raw.get("default_cwd") or "").strip(),
             cwd_allowlist=_safe_list(raw.get("cwd_allowlist", [])),
             command_permission_mode=_normalize_permission_mode(raw.get("command_permission_mode")),
@@ -174,7 +176,7 @@ def _default_command() -> str:
 
 
 def _default_allowed_commands() -> list[str]:
-    return ["sh", "bash", "zsh", "fish", "pwsh", "powershell", "cmd"]
+    return []
 
 
 def _normalize_permission_mode(value: Any) -> str:
@@ -182,6 +184,13 @@ def _normalize_permission_mode(value: Any) -> str:
     if mode in {"allow_all", "admin_only", "blacklist"}:
         return mode
     return "blacklist"
+
+
+def _normalize_backend_mode(value: Any) -> str:
+    mode = str(value or "auto").strip().lower()
+    if mode in {"auto", "pty", "tmux"}:
+        return mode
+    return "auto"
 
 
 def _contains_blacklisted_command(text: str, blacklist: list[str]) -> bool:

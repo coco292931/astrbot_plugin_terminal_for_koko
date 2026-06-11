@@ -169,6 +169,16 @@ right
 - 可选限制工作目录 allowlist。
 - 对 action、输入摘要、输出长度写审计日志。
 
+终端后端：
+
+```text
+auto  Linux/macOS 优先使用 tmux，找不到 tmux 时回退到 pty；Windows 使用 pywinpty
+pty   强制使用插件自建 PTY
+tmux  强制使用 tmux 后端
+```
+
+如果主要使用 `ssh`、`sudo`、`sshpass` 或其它依赖真实 TTY 的交互式程序，建议安装 `tmux` 并把 `backend_mode` 设为 `tmux`。tmux 后端会创建一个真实的 detached tmux session，通过 `send-keys` / `paste-buffer` 写入输入，通过 `capture-pane` 读取屏幕，比自建 PTY 更接近手动打开终端的行为。
+
 命令权限模式：
 
 ```text
@@ -176,6 +186,8 @@ allow_all   放行所有命令，不审核命令内容
 admin_only  只放行管理员命令
 blacklist   不放行命中 command_blacklist 的命令
 ```
+
+`allowed_commands` 是可选的额外启动命令白名单，默认留空。留空时不会挡住 `ssh`、`sshpass`、`sudo` 这类命令，是否放行主要由 `command_permission_mode` 决定。
 
 等待策略：
 
@@ -196,9 +208,9 @@ clear_line             单次 send 前先发 Ctrl-U 清空当前行
 
 当前实现路线：
 
-- Linux/macOS 后端使用 `ptyprocess`。
+- Linux/macOS 默认优先使用 `tmux`，缺失时回退到 `ptyprocess`。
 - Windows 后端使用 `pywinpty` / ConPTY。
 - Linux 后端会尽量设置 `LANG/LC_ALL=C.UTF-8`。
 - Windows 后端会尽量设置 Python UTF-8 环境变量。
 
-如果遇到 `sshpass`、`sudo` 密码输入、全屏 TUI 等复杂交互，直接接管 `screen/tmux` socket 会比自造 PTY 更稳；这可以作为下一阶段后端。
+tmux 后端可以改善 `sshpass`、`sudo` 密码输入、全屏 TUI 等复杂交互。它仍然依赖宿主机安装 `tmux`，并且当前实现是创建插件托管的 tmux session；后续还可以继续扩展为接管已有 tmux socket/session。
