@@ -16,6 +16,8 @@ KEY_MAP = {
     "backspace": "\x7f",
     "ctrl_c": "\x03",
     "ctrl_d": "\x04",
+    "ctrl_u": "\x15",
+    "ctrl_l": "\x0c",
     "up": "\x1b[A",
     "down": "\x1b[B",
     "right": "\x1b[C",
@@ -41,6 +43,10 @@ class TerminalSession:
     @property
     def alive(self) -> bool:
         return bool(getattr(self.backend, "alive", False))
+
+    @property
+    def output_seq(self) -> int:
+        return self.buffer.seq
 
     def touch(self) -> None:
         self.updated_at = time.time()

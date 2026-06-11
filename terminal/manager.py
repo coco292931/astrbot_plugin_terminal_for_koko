@@ -31,6 +31,8 @@ class TerminalManager:
         rows: int = 24,
         cols: int = 100,
         wait: bool = True,
+        enter: bool = True,
+        clear_line: bool = False,
     ) -> dict[str, Any]:
         action = (action or "").strip().lower()
         await self._cleanup_expired()
@@ -40,12 +42,23 @@ class TerminalManager:
             return self._result(False, action, session_id, message=reason)
 
         if action == "start":
-            result = await self._start(command, cwd, rows, cols, text, wait)
+            result = await self._start(
+                event, command, cwd, rows, cols, text, wait, enter
+            )
         elif action == "list":
             result = self._list(action)
         elif action in {"read", "send", "key", "resize", "stop"}:
             result = await self._with_session(
-                action, session_id, text, key, rows, cols, wait
+                event,
+                action,
+                session_id,
+                text,
+                key,
+                rows,
+                cols,
+                wait,
+                enter,
+                clear_line,
             )
         else:
             result = self._result(
@@ -67,7 +80,15 @@ class TerminalManager:
         self.sessions.clear()
 
     async def _start(
-        self, command: str, cwd: str, rows: int, cols: int, text: str, wait: bool
+        self,
+        event: Any,
+        command: str,
+        cwd: str,
+        rows: int,
+        cols: int,
+        text: str,
+        wait: bool,
+        enter: bool,
     ) -> dict[str, Any]:
         if len(self.sessions) >= self.policy.max_sessions:
             return self._result(
@@ -78,6 +99,9 @@ class TerminalManager:
             )
 
         ok, normalized_command, message = self.policy.normalize_command(command)
+        if not ok:
+            return self._result(False, "start", "", message=message)
+        ok, message = self.policy.authorize_command_text(event, normalized_command)
         if not ok:
             return self._result(False, "start", "", message=message)
 
@@ -103,7 +127,13 @@ class TerminalManager:
 
         self.sessions[session_id] = session
         if text:
-            if len(text) > self.policy.max_input_chars:
+            prepared_text = self._prepare_text(text, enter)
+            ok, message = self.policy.authorize_command_text(event, prepared_text)
+            if not ok:
+                session.close()
+                self.sessions.pop(session_id, None)
+                return self._result(False, "start", session_id, message=message)
+            if len(prepared_text) > self.policy.max_input_chars:
                 session.close()
                 self.sessions.pop(session_id, None)
                 return self._result(
@@ -112,13 +142,14 @@ class TerminalManager:
                     session_id,
                     message=f"text 超过 max_input_chars={self.policy.max_input_chars}",
                 )
-            session.write(text)
+            await self._write_text(session, prepared_text)
         if wait:
-            await self._wait_after_input()
+            await self._wait_after_input(session)
         return self._snapshot_result("start", session_id, session, "terminal started")
 
     async def _with_session(
         self,
+        event: Any,
         action: str,
         session_id: str,
         text: str,
@@ -126,8 +157,10 @@ class TerminalManager:
         rows: int,
         cols: int,
         wait: bool,
+        enter: bool,
+        clear_line: bool,
     ) -> dict[str, Any]:
-        session_id = (session_id or "").strip()
+        session_id = self._resolve_session_id((session_id or "").strip())
         session = self.sessions.get(session_id)
         if not session:
             return self._result(False, action, session_id, message="会话不存在")
@@ -139,29 +172,40 @@ class TerminalManager:
             if action == "read":
                 return self._snapshot_result(action, session_id, session)
             if action == "send":
-                if len(text or "") > self.policy.max_input_chars:
+                prepared_text = self._prepare_text(text or "", enter, clear_line)
+                ok, message = self.policy.authorize_command_text(event, prepared_text)
+                if not ok:
+                    return self._result(False, action, session_id, message=message)
+                if len(prepared_text) > self.policy.max_input_chars:
                     return self._result(
                         False,
                         action,
                         session_id,
                         message=f"text 超过 max_input_chars={self.policy.max_input_chars}",
                     )
-                session.write(text or "")
+                await self._write_text(session, prepared_text)
                 if wait:
-                    await self._wait_after_input()
+                    await self._wait_after_input(session)
                 return self._snapshot_result(action, session_id, session)
             if action == "key":
                 session.send_key(key)
                 if wait:
-                    await self._wait_after_input()
+                    await self._wait_after_input(session)
                 return self._snapshot_result(action, session_id, session)
             if action == "resize":
-                session.resize(max(1, min(int(rows or 24), 80)), max(20, min(int(cols or 100), 240)))
-                return self._snapshot_result(action, session_id, session, "terminal resized")
+                session.resize(
+                    max(1, min(int(rows or 24), 80)),
+                    max(20, min(int(cols or 100), 240)),
+                )
+                return self._snapshot_result(
+                    action, session_id, session, "terminal resized"
+                )
             if action == "stop":
                 session.close()
                 self.sessions.pop(session_id, None)
-                return self._result(True, action, session_id, alive=False, message="terminal stopped")
+                return self._result(
+                    True, action, session_id, alive=False, message="terminal stopped"
+                )
         except Exception as exc:
             logger.warning(f"[terminal_for_koko] action {action} failed: {exc}")
             return self._result(False, action, session_id, message=str(exc))
@@ -191,15 +235,40 @@ class TerminalManager:
             "seq": 0,
             "screen": "",
             "recent_output": "",
+            "view": self._make_view("", True, 0, json.dumps(items, ensure_ascii=False)),
             "truncated": False,
             "sessions": items,
             "message": "",
         }
 
-    async def _wait_after_input(self) -> None:
-        delay = max(0, self.policy.settle_delay_ms) / 1000
-        if delay > 0:
-            await asyncio.sleep(delay)
+    async def _wait_after_input(self, session: TerminalSession) -> None:
+        max_wait = max(0, self.policy.max_wait_ms) / 1000
+        quiet = max(0, self.policy.quiet_ms) / 1000
+        if max_wait <= 0:
+            return
+
+        started = time.monotonic()
+        last_change = started
+        last_seq = session.output_seq
+        seen_output = False
+        while time.monotonic() - started < max_wait:
+            await asyncio.sleep(0.05)
+            now = time.monotonic()
+            seq = session.output_seq
+            if seq != last_seq:
+                seen_output = True
+                last_seq = seq
+                last_change = now
+            if seen_output and now - last_change >= quiet:
+                return
+
+    async def _write_text(self, session: TerminalSession, text: str) -> None:
+        chunk_size = max(1, self.policy.input_chunk_chars)
+        delay = max(0, self.policy.input_chunk_delay_ms) / 1000
+        for start in range(0, len(text), chunk_size):
+            session.write(text[start : start + chunk_size])
+            if delay > 0 and start + chunk_size < len(text):
+                await asyncio.sleep(delay)
 
     async def _cleanup_expired(self) -> None:
         for session_id, session in list(self.sessions.items()):
@@ -229,6 +298,12 @@ class TerminalManager:
             "seq": snapshot.seq,
             "screen": snapshot.screen,
             "recent_output": snapshot.recent_output,
+            "view": self._make_view(
+                session_id,
+                session.alive,
+                snapshot.seq,
+                snapshot.recent_output or snapshot.screen,
+            ),
             "truncated": snapshot.truncated,
             "message": message,
         }
@@ -249,9 +324,31 @@ class TerminalManager:
             "seq": 0,
             "screen": "",
             "recent_output": "",
+            "view": f"[terminal {action or 'unknown'}] {message}".strip(),
             "truncated": False,
             "message": message,
         }
+
+    def _prepare_text(self, text: str, enter: bool, clear_line: bool = False) -> str:
+        prepared = text or ""
+        if clear_line:
+            prepared = "\x15" + prepared
+        if enter and prepared and not prepared.endswith(("\n", "\r")):
+            prepared += "\n"
+        return prepared
+
+    def _resolve_session_id(self, session_id: str) -> str:
+        if session_id:
+            return session_id
+        alive = [sid for sid, session in self.sessions.items() if session.alive]
+        if len(alive) == 1:
+            return alive[0]
+        return session_id
+
+    def _make_view(self, session_id: str, alive: bool, seq: int, text: str) -> str:
+        state = "alive" if alive else "closed"
+        label = session_id or "terminal"
+        return f"[{label} {state} seq={seq}]\n{text or ''}"
 
     def _new_session_id(self) -> str:
         while True:
@@ -277,7 +374,10 @@ class TerminalManager:
                 "session_id": session_id or result.get("session_id", ""),
                 "ok": result.get("ok", False),
                 "alive": result.get("alive", False),
-                "sender_id": _extract_event_value(event, ("get_sender_id", "get_user_id", "sender_id", "user_id")),
+                "sender_id": _extract_event_value(
+                    event,
+                    ("get_sender_id", "get_user_id", "sender_id", "user_id"),
+                ),
                 "origin": str(getattr(event, "unified_msg_origin", "") or ""),
                 "text_len": len(text or ""),
                 "text_preview": _preview(text),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -53,8 +54,13 @@ class TerminalPolicyConfig:
     allowed_commands: list[str] = field(default_factory=list)
     default_cwd: str = ""
     cwd_allowlist: list[str] = field(default_factory=list)
+    command_permission_mode: str = "blacklist"
+    command_blacklist: list[str] = field(default_factory=list)
     audit_enabled: bool = True
-    settle_delay_ms: int = 200
+    quiet_ms: int = 200
+    max_wait_ms: int = 3000
+    input_chunk_chars: int = 128
+    input_chunk_delay_ms: int = 10
 
     @classmethod
     def from_config(cls, raw_config: dict[str, Any]) -> "TerminalPolicyConfig":
@@ -72,18 +78,21 @@ class TerminalPolicyConfig:
             max_recent_chars=_safe_int(raw.get("max_recent_chars"), 4000, 500, 50000),
             max_input_chars=_safe_int(raw.get("max_input_chars"), 4000, 100, 20000),
             default_command=str(raw.get("default_command") or "").strip(),
-            allowed_commands=_safe_list(
-                raw.get("allowed_commands", _default_allowed_commands())
-            ),
+            allowed_commands=_safe_list(raw.get("allowed_commands", _default_allowed_commands())),
             default_cwd=str(raw.get("default_cwd") or "").strip(),
             cwd_allowlist=_safe_list(raw.get("cwd_allowlist", [])),
+            command_permission_mode=_normalize_permission_mode(raw.get("command_permission_mode")),
+            command_blacklist=_safe_list(raw.get("command_blacklist", [])),
             audit_enabled=_safe_bool(raw.get("audit_enabled"), True),
-            settle_delay_ms=_safe_int(
-                raw.get("settle_delay_ms", raw.get("send_read_delay_ms")),
+            quiet_ms=_safe_int(
+                raw.get("quiet_ms", raw.get("settle_delay_ms", raw.get("send_read_delay_ms"))),
                 200,
                 0,
                 5000,
             ),
+            max_wait_ms=_safe_int(raw.get("max_wait_ms"), 3000, 0, 60000),
+            input_chunk_chars=_safe_int(raw.get("input_chunk_chars"), 128, 8, 4096),
+            input_chunk_delay_ms=_safe_int(raw.get("input_chunk_delay_ms"), 10, 0, 1000),
         )
 
     def authorize_event(self, event: Any) -> tuple[bool, str]:
@@ -109,12 +118,25 @@ class TerminalPolicyConfig:
         executable = _first_executable_name(command)
         allowed = {_normalize_executable_name(item) for item in self.allowed_commands}
         if allowed and executable not in allowed:
-            return (
-                False,
-                "",
-                f"命令 {executable!r} 不在 allowed_commands 白名单内",
-            )
+            return False, "", f"命令 {executable!r} 不在 allowed_commands 白名单内"
         return True, command, ""
+
+    def authorize_command_text(self, event: Any, text: str) -> tuple[bool, str]:
+        text = (text or "").strip()
+        if not text:
+            return True, ""
+
+        if self.command_permission_mode == "allow_all":
+            return True, ""
+        if self.command_permission_mode == "admin_only":
+            if _looks_like_admin(event, self.admin_user_ids):
+                return True, ""
+            return False, "当前命令权限模式为 admin_only，仅管理员命令放行"
+        if self.command_permission_mode == "blacklist" and _contains_blacklisted_command(
+            text, self.command_blacklist
+        ):
+            return False, "命令命中 command_blacklist，已拒绝执行"
+        return True, ""
 
     def normalize_cwd(self, cwd: str) -> tuple[bool, str, str]:
         cwd = (cwd or self.default_cwd or "").strip()
@@ -143,11 +165,28 @@ class TerminalPolicyConfig:
 def _default_command() -> str:
     if sys.platform.startswith("win"):
         return "powershell"
+    shell = os.environ.get("SHELL", "").strip()
+    if shell:
+        return shell
+    if shutil.which("bash"):
+        return "bash"
     return "sh"
 
 
 def _default_allowed_commands() -> list[str]:
     return ["sh", "bash", "zsh", "fish", "pwsh", "powershell", "cmd"]
+
+
+def _normalize_permission_mode(value: Any) -> str:
+    mode = str(value or "blacklist").strip().lower()
+    if mode in {"allow_all", "admin_only", "blacklist"}:
+        return mode
+    return "blacklist"
+
+
+def _contains_blacklisted_command(text: str, blacklist: list[str]) -> bool:
+    lowered = text.lower()
+    return any(item.lower() in lowered for item in blacklist if item)
 
 
 def _first_executable_name(command: str) -> str:

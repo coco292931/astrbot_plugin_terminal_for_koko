@@ -11,9 +11,9 @@ from .terminal.policy import TerminalPolicyConfig
 
 @register(
     "astrbot_plugin_terminal_for_koko",
-    "coco",
-    "Koko 交互终端",
-    "0.1.0",
+    "coco & gpt",
+    "koko 交互终端",
+    "0.2.0",
     "https://github.com/coco292931/astrbot_plugin_terminal_for_koko",
 )
 class TerminalForKokoPlugin(Star):
@@ -26,7 +26,8 @@ class TerminalForKokoPlugin(Star):
         logger.info(
             "[terminal_for_koko] loaded: "
             f"enabled={policy.enabled}, admin_only={policy.admin_only}, "
-            f"allow_group={policy.allow_group}, max_sessions={policy.max_sessions}"
+            f"allow_group={policy.allow_group}, max_sessions={policy.max_sessions}, "
+            f"command_permission_mode={policy.command_permission_mode}"
         )
 
     @filter.llm_tool(name="terminal")
@@ -42,6 +43,8 @@ class TerminalForKokoPlugin(Star):
         rows: int = 24,
         cols: int = 100,
         wait: bool = True,
+        enter: bool = True,
+        clear_line: bool = False,
     ) -> dict[str, Any]:
         """交互式终端统一入口。
 
@@ -50,14 +53,16 @@ class TerminalForKokoPlugin(Star):
 
         Args:
             action(string): 动作，支持 start/read/send/key/resize/stop/list
-            session_id(string): 会话 ID，start 之外的动作通常必填
-            text(string): send 动作用的输入文本，可包含换行
-            key(string): key 动作用的特殊按键，如 enter/tab/ctrl_c/up/down
+            session_id(string): 会话 ID；只有一个活跃会话时，send/read/key/stop 可省略
+            text(string): start/send 动作用的输入文本；enter=true 时会自动补换行执行
+            key(string): key 动作用的特殊按键，如 enter/tab/ctrl_c/ctrl_d/ctrl_u
             command(string): start 动作用的终端命令，留空使用配置默认值
             cwd(string): start 动作用的工作目录；若配置了 cwd_allowlist，则必须位于其中
             rows(int): start/resize 动作用的终端行数
             cols(int): start/resize 动作用的终端列数
-            wait(bool): start/send/key 后是否按插件配置等待一小段时间再读屏
+            wait(bool): start/send/key 后是否等待输出安静后再读屏
+            enter(bool): start/send 写入 text 后是否自动补换行执行
+            clear_line(bool): send 前是否先发送 Ctrl-U 清空当前输入行
         """
         try:
             return await self.terminal_manager.handle(
@@ -71,6 +76,8 @@ class TerminalForKokoPlugin(Star):
                 rows=rows,
                 cols=cols,
                 wait=wait,
+                enter=enter,
+                clear_line=clear_line,
             )
         except Exception as exc:
             logger.warning(f"[terminal_for_koko] terminal tool failed: {exc}")
@@ -82,6 +89,7 @@ class TerminalForKokoPlugin(Star):
                 "seq": 0,
                 "screen": "",
                 "recent_output": "",
+                "view": f"[terminal error] {exc}",
                 "truncated": False,
                 "message": f"terminal tool failed: {exc}",
             }

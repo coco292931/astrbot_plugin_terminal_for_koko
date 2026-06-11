@@ -20,9 +20,7 @@
                 "description": "允许使用的用户 ID",
                 "hint": "当 AstrBot 事件无法确认管理员身份时，用这里的用户 ID 作为安全白名单。",
                 "type": "list",
-                "items": {
-                    "type": "string"
-                },
+                "items": {"type": "string"},
                 "default": []
             },
             "allow_group": {
@@ -63,17 +61,15 @@
             },
             "default_command": {
                 "description": "默认终端命令",
-                "hint": "start 未指定 command 时使用。留空则按平台自动选择：Linux/macOS 使用 sh，Windows 使用 powershell。",
+                "hint": "start 未指定 command 时使用。留空则按平台自动选择：Linux/macOS 优先 $SHELL/bash/sh，Windows 使用 powershell。",
                 "type": "string",
                 "default": ""
             },
             "allowed_commands": {
-                "description": "允许启动的命令",
-                "hint": "只校验 command 的第一个可执行文件名。留空不建议，会放宽限制。",
+                "description": "允许启动的终端命令",
+                "hint": "只校验 start command 的第一个可执行文件名。留空会放宽启动命令限制。",
                 "type": "list",
-                "items": {
-                    "type": "string"
-                },
+                "items": {"type": "string"},
                 "default": ["sh", "bash", "zsh", "fish", "pwsh", "powershell", "cmd"]
             },
             "default_cwd": {
@@ -86,9 +82,21 @@
                 "description": "允许的工作目录根",
                 "hint": "非空时，显式传入的 cwd 必须位于这些目录内。留空表示不限制 cwd。",
                 "type": "list",
-                "items": {
-                    "type": "string"
-                },
+                "items": {"type": "string"},
+                "default": []
+            },
+            "command_permission_mode": {
+                "description": "命令权限模式",
+                "hint": "allow_all=所有命令不审核；admin_only=仅管理员命令放行；blacklist=仅拦截黑名单命令。",
+                "type": "string",
+                "default": "blacklist",
+                "options": ["allow_all", "admin_only", "blacklist"]
+            },
+            "command_blacklist": {
+                "description": "命令黑名单",
+                "hint": "command_permission_mode=blacklist 时生效；命中这些片段的 start command 或 send text 会被拒绝。",
+                "type": "list",
+                "items": {"type": "string"},
                 "default": []
             },
             "audit_enabled": {
@@ -97,11 +105,29 @@
                 "type": "bool",
                 "default": true
             },
-            "settle_delay_ms": {
-                "description": "动作后自动等待毫秒数",
-                "hint": "start/send/key 后若 wait=true，插件等待这段时间后自动返回屏幕；LLM 只决定是否等待，不决定等待多久。",
+            "quiet_ms": {
+                "description": "输出安静毫秒数",
+                "hint": "wait=true 时，插件等待终端输出停止变化 quiet_ms 后返回。",
                 "type": "int",
                 "default": 200
+            },
+            "max_wait_ms": {
+                "description": "自动等待上限毫秒数",
+                "hint": "wait=true 时最多等待这么久，避免无输出命令一直卡住。",
+                "type": "int",
+                "default": 3000
+            },
+            "input_chunk_chars": {
+                "description": "输入分块字符数",
+                "hint": "长命令会按块写入，减少 Windows/PTY 输入截断概率。",
+                "type": "int",
+                "default": 128
+            },
+            "input_chunk_delay_ms": {
+                "description": "输入分块间隔毫秒数",
+                "hint": "每写入一块长文本后等待的时间。",
+                "type": "int",
+                "default": 10
             }
         }
     }

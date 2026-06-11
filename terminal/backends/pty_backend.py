@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shlex
 import threading
 from pathlib import Path
@@ -45,7 +46,10 @@ class PtyProcessSession:
         if not argv:
             raise RuntimeError("终端 command 为空")
 
-        kwargs = {"dimensions": (max(1, rows), max(20, cols))}
+        env = os.environ.copy()
+        env.setdefault("LANG", "C.UTF-8")
+        env.setdefault("LC_ALL", env.get("LANG", "C.UTF-8"))
+        kwargs = {"dimensions": (max(1, rows), max(20, cols)), "env": env}
         if cwd:
             kwargs["cwd"] = str(Path(cwd))
 

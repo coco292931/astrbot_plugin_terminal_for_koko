@@ -22,6 +22,11 @@ class TextRingBuffer:
         self._total_written = 0
         self._seq = 0
 
+    @property
+    def seq(self) -> int:
+        with self._lock:
+            return self._seq
+
     def append(self, text: str) -> None:
         if not text:
             return

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 
@@ -24,10 +25,17 @@ class WinPtySession:
 
         self.buffer = buffer
         self._closed = False
-        kwargs = {"dimensions": (max(1, rows), max(20, cols))}
+        env = os.environ.copy()
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        kwargs = {"dimensions": (max(1, rows), max(20, cols)), "env": env}
         if cwd:
             kwargs["cwd"] = str(Path(cwd))
-        self._proc = PtyProcess.spawn(command, **kwargs)
+        try:
+            self._proc = PtyProcess.spawn(command, **kwargs)
+        except TypeError:
+            kwargs.pop("env", None)
+            self._proc = PtyProcess.spawn(command, **kwargs)
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
