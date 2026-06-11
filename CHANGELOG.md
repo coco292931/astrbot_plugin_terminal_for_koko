@@ -2,6 +2,18 @@
 
 所有重要变更都会记录在这里。
 
+## [0.3.2] - 2026-06-11
+
+### Changed
+
+- 插件注册版本同步更新为 `0.3.2`。
+- 新增权限策略回归测试，覆盖 `allow_all`、`allowed_commands` 与 `sshpass_pipe_fallback` 的组合场景。
+
+### Fixed
+
+- 发布 `command_permission_mode=allow_all` 时跳过 `allowed_commands` 白名单的修复，避免 `sshpass` 等命令被白名单误拦截。
+- 发布 `sshpass_pipe_fallback=true` 时允许 `sshpass` 先进入 pipe fallback 的修复，避免在后端切换前被 `allowed_commands` 拦截。
+
 ## [0.3.1] - 2026-06-11
 
 ### Changed

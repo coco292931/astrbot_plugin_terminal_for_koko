@@ -121,9 +121,13 @@ class TerminalPolicyConfig:
         if not command:
             return False, "", "缺少 command，且 default_command 为空"
 
+        # allow_all means no command-level allowlist checks; keep event/cwd
+        # authorization separate from command text authorization.
         if self.command_permission_mode == "allow_all":
             return True, command, ""
 
+        # sshpass fallback must be decided before allowed_commands, otherwise a
+        # non-empty start-command allowlist prevents the pipe backend workaround.
         if self.should_use_pipe_for_sshpass(command):
             return True, command, ""
 
