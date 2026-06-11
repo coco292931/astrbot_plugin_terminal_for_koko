@@ -218,7 +218,7 @@ admin_only  只放行管理员命令
 blacklist   不放行命中 command_blacklist 的命令
 ```
 
-`allowed_commands` 是可选的额外启动命令白名单，默认留空。留空时不会挡住 `ssh`、`sshpass`、`sudo` 这类命令，是否放行主要由 `command_permission_mode` 决定。
+`allowed_commands` 是可选的额外启动命令白名单，默认留空。`command_permission_mode=allow_all` 时不会再套用这个白名单；`sshpass_pipe_fallback=true` 时，`sshpass` 也会先放行到 pipe fallback，避免在白名单阶段被挡住。其它模式下，非空 `allowed_commands` 仍会限制 `start.command` 的第一个可执行文件名。
 
 等待策略：
 

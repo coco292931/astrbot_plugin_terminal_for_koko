@@ -2,6 +2,17 @@
 
 所有重要变更都会记录在这里。
 
+## [0.3.1] - 2026-06-11
+
+### Changed
+
+- 插件注册版本同步更新为 `0.3.1`。
+
+### Fixed
+
+- 修复 `command_permission_mode=allow_all` 时仍会被非空 `allowed_commands` 拦截的问题。
+- 修复 `sshpass_pipe_fallback=true` 时，`sshpass` 可能在进入 pipe fallback 前先被 `allowed_commands` 拦截的问题。
+
 ## [0.3.0] - 2026-06-11
 
 ### Added

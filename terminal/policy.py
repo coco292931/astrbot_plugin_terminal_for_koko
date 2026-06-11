@@ -121,6 +121,12 @@ class TerminalPolicyConfig:
         if not command:
             return False, "", "缺少 command，且 default_command 为空"
 
+        if self.command_permission_mode == "allow_all":
+            return True, command, ""
+
+        if self.should_use_pipe_for_sshpass(command):
+            return True, command, ""
+
         executable = _first_executable_name(command)
         allowed = {_normalize_executable_name(item) for item in self.allowed_commands}
         if allowed and executable not in allowed:
