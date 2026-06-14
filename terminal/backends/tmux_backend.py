@@ -77,12 +77,13 @@ class TmuxSession:
     def write(self, text: str) -> None:
         if not self.alive:
             raise RuntimeError("tmux 会话已结束")
-        buffer_name = f"{self.name}_input"
-        self._run(
-            ["tmux", "load-buffer", "-b", buffer_name, "-"],
-            input_text=text,
-        )
-        self._run(["tmux", "paste-buffer", "-b", buffer_name, "-t", self.target, "-d"])
+        # Use send-keys -l (literal) instead of paste-buffer.
+        # paste-buffer wraps content in bracketed-paste escape sequences
+        # (\x1b[200~...\x1b[201~) which raw TTY readers (ssh password prompt,
+        # sudo, etc.) do not strip — the control chars become part of the input
+        # and corrupt passwords or commands.  send-keys -l injects bytes
+        # verbatim without any bracketed-paste wrapping.
+        self._run(["tmux", "send-keys", "-t", self.target, "-l", text])
         self._refresh_capture()
 
     def send_key(self, key: str) -> None:

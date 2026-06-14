@@ -13,7 +13,7 @@ from .terminal.policy import TerminalPolicyConfig
     "astrbot_plugin_terminal_for_koko",
     "coco & gpt",
     "koko 交互终端",
-    "0.3.3",
+    "0.3.5",
     "https://github.com/coco292931/astrbot_plugin_terminal_for_koko",
 )
 class TerminalForKokoPlugin(Star):
