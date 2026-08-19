@@ -81,6 +81,14 @@ class TerminalForKokoPlugin(Star):
             enter(bool): start/send 写入 text 后是否自动补换行执行
             clear_line(bool): send 前是否先发送 Ctrl-U 清空当前输入行
         """
+        # 非管理员不暴露：直接返回工具不可用，不透露 terminal 任何信息
+        ok, _reason = self.terminal_manager.policy.authorize_event(event)
+        if not ok:
+            return {
+                "ok": False,
+                "message": "tool unavailable",
+            }
+
         try:
             return await self.terminal_manager.handle(
                 event=event,
