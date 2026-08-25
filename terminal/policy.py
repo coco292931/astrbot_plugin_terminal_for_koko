@@ -60,13 +60,14 @@ class TerminalPolicyConfig:
     command_permission_mode: str = "blacklist"
     command_blacklist: list[str] = field(default_factory=list)
     audit_enabled: bool = True
+    tui_cleanup: bool = True
     quiet_ms: int = 200
     max_wait_ms: int = 3000
     input_chunk_chars: int = 128
     input_chunk_delay_ms: int = 10
 
     @classmethod
-    def from_config(cls, raw_config: dict[str, Any]) -> "TerminalPolicyConfig":
+    def from_config(cls, raw_config: dict[str, Any]) -> TerminalPolicyConfig:
         raw = raw_config.get("terminal", raw_config)
         if not isinstance(raw, dict):
             raw = {}
@@ -81,24 +82,34 @@ class TerminalPolicyConfig:
             max_recent_chars=_safe_int(raw.get("max_recent_chars"), 4000, 500, 50000),
             max_input_chars=_safe_int(raw.get("max_input_chars"), 4000, 100, 20000),
             default_command=str(raw.get("default_command") or "").strip(),
-            allowed_commands=_safe_list(raw.get("allowed_commands", _default_allowed_commands())),
+            allowed_commands=_safe_list(
+                raw.get("allowed_commands", _default_allowed_commands())
+            ),
             backend_mode=_normalize_backend_mode(raw.get("backend_mode")),
             auto_start_tmux=_safe_bool(raw.get("auto_start_tmux"), True),
             sshpass_pipe_fallback=_safe_bool(raw.get("sshpass_pipe_fallback"), True),
             default_cwd=str(raw.get("default_cwd") or "").strip(),
             cwd_allowlist=_safe_list(raw.get("cwd_allowlist", [])),
-            command_permission_mode=_normalize_permission_mode(raw.get("command_permission_mode")),
+            command_permission_mode=_normalize_permission_mode(
+                raw.get("command_permission_mode")
+            ),
             command_blacklist=_safe_list(raw.get("command_blacklist", [])),
             audit_enabled=_safe_bool(raw.get("audit_enabled"), True),
+            tui_cleanup=_safe_bool(raw.get("tui_cleanup"), True),
             quiet_ms=_safe_int(
-                raw.get("quiet_ms", raw.get("settle_delay_ms", raw.get("send_read_delay_ms"))),
+                raw.get(
+                    "quiet_ms",
+                    raw.get("settle_delay_ms", raw.get("send_read_delay_ms")),
+                ),
                 200,
                 0,
                 5000,
             ),
             max_wait_ms=_safe_int(raw.get("max_wait_ms"), 3000, 0, 60000),
             input_chunk_chars=_safe_int(raw.get("input_chunk_chars"), 128, 8, 4096),
-            input_chunk_delay_ms=_safe_int(raw.get("input_chunk_delay_ms"), 10, 0, 1000),
+            input_chunk_delay_ms=_safe_int(
+                raw.get("input_chunk_delay_ms"), 10, 0, 1000
+            ),
         )
 
     def authorize_event(self, event: Any) -> tuple[bool, str]:
@@ -106,7 +117,10 @@ class TerminalPolicyConfig:
             return False, "terminal 工具未启用，请先在插件配置中打开 terminal.enabled"
 
         if not self.allow_group and _looks_like_group_event(event):
-            return False, "terminal 工具默认禁止群聊调用，请在私聊中使用或显式开启 allow_group"
+            return (
+                False,
+                "terminal 工具默认禁止群聊调用，请在私聊中使用或显式开启 allow_group",
+            )
 
         if self.admin_only and not _looks_like_admin(event, self.admin_user_ids):
             return (
@@ -157,8 +171,9 @@ class TerminalPolicyConfig:
             if _looks_like_admin(event, self.admin_user_ids):
                 return True, ""
             return False, "当前命令权限模式为 admin_only，仅管理员命令放行"
-        if self.command_permission_mode == "blacklist" and _contains_blacklisted_command(
-            text, self.command_blacklist
+        if (
+            self.command_permission_mode == "blacklist"
+            and _contains_blacklisted_command(text, self.command_blacklist)
         ):
             return False, "命令命中 command_blacklist，已拒绝执行"
         return True, ""

@@ -53,6 +53,12 @@
                 "type": "int",
                 "default": 4000
             },
+            "tui_cleanup": {
+                "description": "清洗 TUI 屏幕输出",
+                "hint": "默认开启。去除 tmux 抓屏中的边框装饰字符、动画残留行、连续空行和行尾空白，并优化增量提取，避免整屏内容反复进入 recent_output。",
+                "type": "bool",
+                "default": true
+            },
             "max_input_chars": {
                 "description": "单次输入字符上限",
                 "hint": "限制 LLM 每次 send 可写入终端的文本长度。",

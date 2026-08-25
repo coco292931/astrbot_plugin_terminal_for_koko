@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import os
 import re
 import shutil
@@ -8,6 +9,24 @@ from pathlib import Path
 
 from ..keys import key_to_tmux
 from ..screen_buffer import ScreenSnapshot
+
+# Box-drawing, block and shade characters used by TUI programs for borders,
+# scrollbars and progress bars. They carry no information for an LLM reading
+# the screen, so they are stripped when tui_cleanup is enabled. Note this is
+# the Unicode box-drawing set only — the ASCII pipe "|" is intentionally kept.
+_TUI_DECORATION_CHARS = "│┃┌┐└┘├┤┬┴┼┏┓┗┛┣┫┳┻╋╭╮╰╯╔╗╚╝╠╣╦╩╬═║─━▏▎▍▌▋▊▉▖▗▘▝▚▞░▒▓█■□▪"
+_TUI_DECORATION_TRANSLATION = str.maketrans("", "", _TUI_DECORATION_CHARS)
+
+# Lines made only of spinner/fish/animation characters (e.g. the classic "><>"
+# fish, the |/-\ spinner, braille spinners) are transient decoration and are
+# dropped entirely.
+_TUI_ANIMATION_LINE_RE = re.compile(r"^[><oO0*·.\-|/\\_⠀-⣿◐◓◑◒]+$")
+
+# Context lines kept around each changed region when diffing full-screen redraws.
+_DIFF_CONTEXT_LINES = 2
+# Safety valve: difflib is quadratic in pathological cases, skip it for huge
+# captures (tmux capture-pane is bounded by -S -2000, so this rarely triggers).
+_DIFF_MAX_TOTAL_LINES = 8000
 
 
 class TmuxSession:
@@ -24,14 +43,18 @@ class TmuxSession:
         cwd: str,
         rows: int,
         cols: int,
+        tui_cleanup: bool = True,
     ):
         if not shutil.which("tmux"):
-            raise RuntimeError("未找到 tmux，请先在系统中安装 tmux 或改用 backend_mode=pty")
+            raise RuntimeError(
+                "未找到 tmux，请先在系统中安装 tmux 或改用 backend_mode=pty"
+            )
 
         self.name = _safe_tmux_name(session_id)
         self.target = f"{self.name}:0.0"
         self.rows = max(1, rows)
         self.cols = max(20, cols)
+        self.tui_cleanup = tui_cleanup
         self._last_capture = ""
         self._read_capture = ""
         self._seq = 0
@@ -114,6 +137,10 @@ class TmuxSession:
         screen_limit = max(200, int(screen_limit or 8000))
         recent_limit = max(200, int(recent_limit or 4000))
         capture = self._refresh_capture()
+        if self.tui_cleanup:
+            capture = _cleanup_tui_output(capture)
+        # Delta is computed on the cleaned text so that decoration that merely
+        # shifted (borders, animation residue) never re-enters recent_output.
         recent = _capture_delta(self._read_capture, capture)
         self._read_capture = capture
 
@@ -189,15 +216,105 @@ def _wrap_command_for_utf8(command: str) -> str:
     )
 
 
+def _cleanup_tui_output(text: str) -> str:
+    """Strip TUI decoration noise from a captured screen.
+
+    Removes box-drawing/shade/border characters, drops purely decorative
+    animation lines (spinners, fish), collapses runs of blank lines and trims
+    trailing whitespace, so LLM-facing output stays compact.
+
+    Args:
+        text: Raw tmux capture output.
+
+    Returns:
+        Cleaned text; blank-only input collapses to an empty string.
+    """
+    lines = []
+    for line in text.splitlines():
+        line = line.rstrip().translate(_TUI_DECORATION_TRANSLATION).rstrip()
+        if not line:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        if _TUI_ANIMATION_LINE_RE.match(line.strip()):
+            continue
+        lines.append(line)
+    while lines and lines[0] == "":
+        lines.pop(0)
+    while lines and lines[-1] == "":
+        lines.pop()
+    return "\n".join(lines)
+
+
 def _capture_delta(previous: str, current: str) -> str:
+    """Extract only the genuinely new/changed part of current vs previous.
+
+    Handles three patterns:
+    - appended output: current starts with previous, the appended suffix is new;
+    - scrolled output: the previous tail matches the current head, only the
+      scrolled-in lines are new;
+    - full-screen TUI redraws: a line diff restricted to changed regions, so the
+      whole screen is never repeated in recent_output.
+
+    Args:
+        previous: The (cleaned) capture returned by the last snapshot.
+        current: The (cleaned) capture from the current snapshot.
+
+    Returns:
+        The portion of current that is new or changed; empty if unchanged.
+    """
     if not previous:
         return current
     if current.startswith(previous):
-        return current[len(previous) :]
+        # The boundary newline terminates the previous content, not the new
+        # content; captures never end with "\n", so drop it.
+        return current[len(previous) :].lstrip("\n")
+
     prev_lines = previous.splitlines()
     current_lines = current.splitlines()
+
+    # Scrolling: previous lines shift up, only the tail of current is new.
     max_overlap = min(len(prev_lines), len(current_lines))
     for count in range(max_overlap, 0, -1):
         if prev_lines[-count:] == current_lines[:count]:
-            return "\n".join(current_lines[count:])
-    return current
+            # Only trust the scroll fast path when the overlap is substantial;
+            # a small coincidental overlap in a full redraw would otherwise
+            # return almost the whole screen again.
+            if count >= max(4, len(current_lines) // 2):
+                return "\n".join(current_lines[count:])
+            break
+
+    # Full redraw: report only the changed regions (with a little context).
+    return "\n".join(_changed_regions(prev_lines, current_lines))
+
+
+def _changed_regions(prev_lines: list[str], current_lines: list[str]) -> list[str]:
+    """Return current lines restricted to regions that differ from previous.
+
+    Args:
+        prev_lines: Lines of the previous capture.
+        current_lines: Lines of the current capture.
+
+    Returns:
+        Lines of current that sit inside changed regions, each region padded
+        with a small context of unchanged lines; empty when nothing changed.
+    """
+    if not current_lines:
+        return []
+    if len(prev_lines) + len(current_lines) > _DIFF_MAX_TOTAL_LINES:
+        return current_lines
+    matcher = difflib.SequenceMatcher(None, prev_lines, current_lines, autojunk=False)
+    changed: list[str] = []
+    last_end = -1
+    for tag, _, _, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        start = max(0, j1 - _DIFF_CONTEXT_LINES)
+        end = min(len(current_lines), j2 + _DIFF_CONTEXT_LINES)
+        if start < last_end:
+            # Adjacent regions with overlapping context merge into one.
+            start = last_end
+        if start < end:
+            changed.extend(current_lines[start:end])
+            last_end = end
+    return changed

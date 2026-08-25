@@ -83,7 +83,10 @@ class TerminalManager:
     def auto_start_tmux(self) -> dict[str, Any] | None:
         if not self.policy.enabled or not self.policy.auto_start_tmux:
             return None
-        if any(session.backend_mode == "tmux" and session.alive for session in self.sessions.values()):
+        if any(
+            session.backend_mode == "tmux" and session.alive
+            for session in self.sessions.values()
+        ):
             return None
         if len(self.sessions) >= self.policy.max_sessions:
             return self._result(
@@ -110,6 +113,7 @@ class TerminalManager:
                 cols=100,
                 max_history_chars=max(self.policy.max_output_chars * 3, 20000),
                 backend_mode="tmux",
+                tui_cleanup=self.policy.tui_cleanup,
             )
         except Exception as exc:
             logger.warning(f"[terminal_for_koko] auto-start tmux failed: {exc}")
@@ -166,6 +170,7 @@ class TerminalManager:
                 cols=cols,
                 max_history_chars=max(self.policy.max_output_chars * 3, 20000),
                 backend_mode=backend_mode,
+                tui_cleanup=self.policy.tui_cleanup,
             )
         except Exception as exc:
             logger.warning(f"[terminal_for_koko] start failed: {exc}")
@@ -341,7 +346,9 @@ class TerminalManager:
 
     async def _cleanup_expired(self) -> None:
         for session_id, session in list(self.sessions.items()):
-            if not session.alive or session.is_idle_expired(self.policy.idle_ttl_seconds):
+            if not session.alive or session.is_idle_expired(
+                self.policy.idle_ttl_seconds
+            ):
                 try:
                     session.close()
                 except Exception:

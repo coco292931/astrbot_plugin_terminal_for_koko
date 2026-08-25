@@ -30,6 +30,7 @@ class TerminalForKokoPlugin(Star):
             f"backend_mode={policy.backend_mode}, "
             f"auto_start_tmux={policy.auto_start_tmux}, "
             f"sshpass_pipe_fallback={policy.sshpass_pipe_fallback}, "
+            f"tui_cleanup={policy.tui_cleanup}, "
             f"command_permission_mode={policy.command_permission_mode}"
         )
         auto_start_result = self.terminal_manager.auto_start_tmux()

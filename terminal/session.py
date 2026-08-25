@@ -25,6 +25,7 @@ class TerminalSession:
     cols: int
     max_history_chars: int
     backend_mode: str = "auto"
+    tui_cleanup: bool = True
 
     def __post_init__(self):
         self.created_at = time.time()
@@ -89,7 +90,9 @@ class TerminalSession:
         # wrapper and drive the inner command directly through our own PTY, injecting
         # the password when we see the prompt. This applies regardless of the chosen
         # backend mode, so we check it first on any non-Windows platform.
-        if not sys.platform.startswith("win") and can_handle_sshpass(self.command, self.cwd):
+        if not sys.platform.startswith("win") and can_handle_sshpass(
+            self.command, self.cwd
+        ):
             try:
                 return SshpassPromptSession(
                     command=self.command,
@@ -118,6 +121,7 @@ class TerminalSession:
                 cwd=self.cwd,
                 rows=self.rows,
                 cols=self.cols,
+                tui_cleanup=self.tui_cleanup,
             )
         if backend_mode == "pty":
             if sys.platform.startswith("win"):
@@ -150,6 +154,7 @@ class TerminalSession:
                 cwd=self.cwd,
                 rows=self.rows,
                 cols=self.cols,
+                tui_cleanup=self.tui_cleanup,
             )
         except Exception:
             if backend_mode == "auto":
